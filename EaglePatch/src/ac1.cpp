@@ -280,8 +280,15 @@ static_assert(sizeof(PadProxyPC) == 0x15D0, "PadProxyPC");
 void __cdecl AddXenonPad()
 {
 	scimitar::padXenon = new scimitar::PadXenon(0);
+	// The game's custom allocator can return null under memory pressure/fragmentation;
+	// calling AddPad() (or later CheckXInputReconnect()) on a null pad would crash.
+	if (!scimitar::padXenon)
+		return;
 	if (!scimitar::pPad->AddPad(scimitar::padXenon, scimitar::Pad::PadType::XenonPad, L"XInput Controller 1", 5, 5))
+	{
 		ac_delete(scimitar::padXenon, nullptr, nullptr);
+		scimitar::padXenon = nullptr;
+	}
 }
 
 ASM(_addXenonJoy_Patch)

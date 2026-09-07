@@ -1,6 +1,7 @@
 #include "ini_reader.h"
 #include <direct.h>
 #include <stdlib.h>
+#include <locale.h>
 
 #include <string.h>
 
@@ -14,6 +15,10 @@ static const wchar_t* AnsiToWideHelper(const char* ansi, wchar_t* wideBuffer, si
 {
 	if (!ansi || !wideBuffer || wideSize == 0)
 		return nullptr;
+	// Zero the buffer first: on failure (e.g. buffer too small) MultiByteToWideChar
+	// writes nothing at all, so without this the buffer would contain uninitialized
+	// stack memory that later gets treated as a NUL-terminated string.
+	wideBuffer[0] = L'\0';
 	if (MultiByteToWideChar(CP_ACP, 0, ansi, -1, wideBuffer, (int)wideSize) == 0)
 	{
 		wideBuffer[wideSize - 1] = L'\0';
@@ -25,6 +30,9 @@ static void WideToAnsi(const wchar_t* wide, char* ansi, size_t ansiSize)
 {
 	if (!wide || !ansi || ansiSize == 0)
 		return;
+	// Same rationale as AnsiToWideHelper: guarantee a terminated string even if the
+	// conversion fails outright and writes nothing.
+	ansi[0] = '\0';
 	if (WideCharToMultiByte(CP_ACP, 0, wide, -1, ansi, (int)ansiSize, NULL, NULL) == 0)
 	{
 		ansi[ansiSize - 1] = '\0';
@@ -93,7 +101,15 @@ FLOAT get_private_profile_float(LPCTSTR lpKeyName, LPCTSTR lpDefault)
 
 	get_private_profile_string(lpKeyName, lpDefault, lpReturnedString, sizeof(lpReturnedString));
 
-	return (FLOAT)atof(lpReturnedString);
+	// Use a locale-independent parse. atof()/strtod() respect the CRT's current
+	// locale, so on a system where the locale's decimal separator is a comma,
+	// an ini value like "FOVMultiplier=1.5" would silently parse as 1.0 instead
+	// of 1.5. _strtod_l with the invariant "C" locale always treats '.' as the
+	// decimal point, matching how the ini file is actually written.
+	static _locale_t invariantLocale = _create_locale(LC_ALL, "C");
+	double value = invariantLocale ? _strtod_l(lpReturnedString, nullptr, invariantLocale) : atof(lpReturnedString);
+
+	return (FLOAT)value;
 }
 
 void init_private_profile(HMODULE hModule)

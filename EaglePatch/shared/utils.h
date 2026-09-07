@@ -11,8 +11,10 @@ template<typename TPad> inline void CheckXInputReconnect(TPad* pad)
 	if (!pad)
 		return;
 
-	static DWORD lastCheckTime = 0;
-	DWORD now = GetTickCount();
+	// GetTickCount64 avoids the 49.7-day wraparound that GetTickCount() has;
+	// a strictly safer drop-in replacement for this kind of throttle.
+	static ULONGLONG lastCheckTime = 0;
+	ULONGLONG now = GetTickCount64();
 	if (now - lastCheckTime < 250)
 		return;
 	lastCheckTime = now;
